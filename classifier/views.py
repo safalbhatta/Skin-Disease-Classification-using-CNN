@@ -1,15 +1,12 @@
 from django.shortcuts import render
+from django.conf import settings
 from PIL import Image
 import numpy as np
 import tensorflow as tf
 import os
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# Load model
-model = tf.keras.models.load_model(os.path.join(BASE_DIR, 'best_model.h5'))
-
-# Update these class labels to match your model
+# Load model once
+model = tf.keras.models.load_model(os.path.join(settings.BASE_DIR, 'best_model.h5'))
 class_names = ['Eczema', 'Warts Molluscum ', 'Melanoma', 'Psoriasis pictures Lichen Planus']
 
 def preprocess_image(image_path):
@@ -18,23 +15,29 @@ def preprocess_image(image_path):
     return img_array
 
 def upload_image(request):
-    if request.method == 'POST':
-        uploaded_file = request.FILES['image']
-        save_path = os.path.join(BASE_DIR, 'media', uploaded_file.name)
+    prediction = None
+    confidence = None
+    image_url = None
 
+    if request.method == 'POST' and request.FILES.get('image'):
+        uploaded_file = request.FILES['image']
+        save_path = os.path.join(settings.MEDIA_ROOT, uploaded_file.name)
+
+        # Save image to media folder
         with open(save_path, 'wb+') as f:
             for chunk in uploaded_file.chunks():
                 f.write(chunk)
 
+        # Predict
         img_tensor = preprocess_image(save_path)
-        prediction = model.predict(img_tensor)
-        label = class_names[np.argmax(prediction)]
-        confidence = float(np.max(prediction))
+        pred = model.predict(img_tensor)
+        prediction = class_names[np.argmax(pred)]
+        confidence = float(np.max(pred))
 
-        return render(request, 'classifier/upload.html', {
-            'prediction': label,
-            'confidence': f"{confidence:.2f}",
-            'image_url': f"/media/{uploaded_file.name}"
-        })
+        image_url = settings.MEDIA_URL + uploaded_file.name
 
-    return render(request, 'classifier/upload.html')
+    return render(request, 'classifier/upload.html', {
+        'prediction': prediction,
+        'confidence': f"{confidence:.2f}" if confidence else None,
+        'image_url': image_url
+    })
